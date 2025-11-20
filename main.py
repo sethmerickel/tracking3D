@@ -2,6 +2,7 @@
 Main script for 3D missile tracking simulation and analysis.
 """
 
+from typing import List
 import numpy as np
 from simulation import Satellite, MissileSimulator, simulate_measurements
 from tracker import MissileTracker
@@ -20,7 +21,7 @@ def main():
     
     # Create satellites in LEO (1000 km altitude)
     num_satellites = 3
-    satellites = []
+    satellites: List[Satellite] = []
     for i in range(num_satellites):
         # Equally spaced around the equator
         true_anomaly = (360.0 / num_satellites) * i

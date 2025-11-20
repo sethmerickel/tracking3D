@@ -5,6 +5,8 @@ Compares estimated trajectory to truth and plots error with confidence envelopes
 
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use("QtAgg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from typing import Tuple

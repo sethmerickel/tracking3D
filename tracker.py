@@ -5,7 +5,7 @@ Implements an extended Kalman filter for tracking position, velocity, and accele
 
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple
+from typing import Dict, Optional
 
 
 class ExtendedKalmanFilter:
@@ -16,7 +16,7 @@ class ExtendedKalmanFilter:
         dt: float,
         process_noise_std: np.ndarray,
         measurement_noise_std: float,
-        initial_state: np.ndarray = None
+        initial_state: Optional[np.ndarray] = None
     ):
         """
         Initialize EKF.
@@ -115,8 +115,7 @@ class ExtendedKalmanFilter:
         self.state = F @ self.state
         
         # Covariance prediction
-        self.P = F @ self.P @ F.T + self.Q
-    
+        self.P[:] = F @ self.P @ F.T + self.Q 
     def update(self, measurement: float, sat_pos: np.ndarray) -> None:
         """
         Update step of EKF with LOS measurement.
@@ -140,7 +139,7 @@ class ExtendedKalmanFilter:
         self.state = self.state + K.flatten() * innovation
         
         # Covariance update
-        self.P = (np.eye(self.state_dim) - K @ H) @ self.P
+        self.P[:] = (np.eye(self.state_dim) - K @ H) @ self.P
     
     def get_position(self) -> np.ndarray:
         """Get estimated missile position."""
@@ -165,9 +164,9 @@ class MissileTracker:
     def __init__(
         self,
         dt: float,
-        process_noise_std: np.ndarray = None,
+        process_noise_std: Optional[np.ndarray] = None,
         measurement_noise_std: float = 0.001,
-        initial_state: np.ndarray = None
+        initial_state: Optional[np.ndarray] = None
     ):
         """
         Initialize tracker.

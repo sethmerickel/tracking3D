@@ -134,7 +134,7 @@ def simulate_measurements(
     missile: MissileSimulator,
     time_array_s: np.ndarray,
     measurement_noise_std: float = 0.001
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> Tuple[dict[int, pd.DataFrame], pd.DataFrame]:
     """
     Simulate satellite measurements and missile truth trajectory.
     
@@ -149,8 +149,8 @@ def simulate_measurements(
         measurements_dict: Dictionary with DataFrames for each satellite
         truth_dataframe: DataFrame with true missile state
     """
-    measurements_dict = {}
-    truth_data = []
+    measurements_dict: dict[int, list[dict[str,float]]] = {}
+    truth_data: List[dict[str,float]] = []
     
     for t in time_array_s:
         # Get true missile state
