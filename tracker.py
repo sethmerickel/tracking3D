@@ -73,14 +73,15 @@ class ExtendedKalmanFilter:
         
         return F
     
-    def measurement_jacobian(self, sat_pos: np.ndarray) -> np.ndarray:
+    def measurement_jacobian(self, sat_pos: np.ndarray, component: int = 0) -> np.ndarray:
         """
-        Get measurement Jacobian H for LOS measurement from satellite.
+        Get measurement Jacobian H for LOS measurement component from satellite.
         
-        Measurement: unit vector from satellite to missile
+        Measurement: one component of the LOS unit vector from satellite to missile
         
         Args:
             sat_pos: Satellite position [x, y, z] in km
+            component: Which LOS component (0=x, 1=y, 2=z)
             
         Returns:
             Jacobian matrix (1 x 9)
@@ -95,15 +96,14 @@ class ExtendedKalmanFilter:
         if los_distance < 1e-6:
             return np.zeros((1, self.state_dim))
         
-        # We measure one component of the LOS unit vector
-        # H is the Jacobian of measurement with respect to state
-        # For simplicity, we'll use a pseudo-measurement approach
+        # Jacobian of LOS unit vector component w.r.t. position
+        # d/dx(los[i]/||los||) = (1/||los|| * delta[i,j] - los[i]*los[j]/||los||^3)
         H = np.zeros((1, self.state_dim))
         
-        # Partial derivative w.r.t. position components
-        H[0, 0] = los_vector[0] / (los_distance**2)
-        H[0, 1] = los_vector[1] / (los_distance**2)
-        H[0, 2] = los_vector[2] / (los_distance**2)
+        for j in range(3):
+            delta_ij = 1.0 if component == j else 0.0
+            H[0, j] = (delta_ij / los_distance - 
+                      los_vector[component] * los_vector[j] / (los_distance**3))
         
         return H
     
@@ -115,31 +115,46 @@ class ExtendedKalmanFilter:
         self.state = F @ self.state
         
         # Covariance prediction
-        self.P[:] = F @ self.P @ F.T + self.Q 
-    def update(self, measurement: float, sat_pos: np.ndarray) -> None:
+        self.P = F @ self.P @ F.T + self.Q 
+    
+    def update(self, measurements: np.ndarray, sat_pos: np.ndarray) -> None:
         """
-        Update step of EKF with LOS measurement.
+        Update step of EKF with multiple LOS measurement components.
         
         Args:
-            measurement: Scalar LOS measurement
+            measurements: 3-element LOS measurement vector [los_x, los_y, los_z]
             sat_pos: Satellite position [x, y, z]
         """
-        H = self.measurement_jacobian(sat_pos)
-        
-        # Innovation
-        innovation = measurement - (H @ self.state)[0]
-        
-        # Innovation covariance
-        S = H @ self.P @ H.T + self.R
-        
-        # Kalman gain
-        K = self.P @ H.T / S[0, 0]
-        
-        # State update
-        self.state = self.state + K.flatten() * innovation
-        
-        # Covariance update
-        self.P[:] = (np.eye(self.state_dim) - K @ H) @ self.P
+        # Process all 3 components of the LOS vector
+        for component in range(3):
+            H = self.measurement_jacobian(sat_pos, component)
+            
+            # Predicted measurement
+            missile_pos = self.state[:3]
+            los_vector = missile_pos - sat_pos
+            los_distance = np.linalg.norm(los_vector)
+            
+            if los_distance > 1e-6:
+                los_unit = los_vector / los_distance
+                predicted_meas = los_unit[component]
+            else:
+                predicted_meas = 0.0
+            
+            # Innovation
+            innovation = measurements[component] - predicted_meas
+            
+            # Innovation covariance
+            S = H @ self.P @ H.T + self.R
+            
+            # Kalman gain
+            if S[0, 0] > 1e-10:
+                K = self.P @ H.T / S[0, 0]
+                
+                # State update
+                self.state = self.state + K.flatten() * innovation
+                
+                # Covariance update
+                self.P = (np.eye(self.state_dim) - K @ H) @ self.P
     
     def get_position(self) -> np.ndarray:
         """Get estimated missile position."""
@@ -234,11 +249,11 @@ class MissileTracker:
                         meas_at_t['sat_pos_z_km'].values[0]
                     ])
                     
-                    # Use one LOS component as measurement
-                    measurement = los_x
+                    # Use all three LOS components as measurements
+                    measurements = np.array([los_x, los_y, los_z])
                     
                     # Update
-                    self.ekf.update(measurement, sat_pos)
+                    self.ekf.update(measurements, sat_pos)
             
             # Store estimate
             pos = self.ekf.get_position()

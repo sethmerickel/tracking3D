@@ -1,5 +1,14 @@
 """
-Main script for 3D missile tracking simulation and analysis.
+Main script for 3    # Create satellites in LEO (1000 km altitude)
+    num_satellites = 5  # Increased from 3 for better geometry
+    satellites = []
+    for i in range(num_satellites):
+        # Equally spaced around the equator
+        true_anomaly = (360.0 / num_satellites) * i
+        sat = Satellite(sat_id=i, altitude_km=1000.0, true_anomaly_deg=true_anomaly)
+        satellites.append(sat)
+        print(f"  Satellite {i}: True anomaly = {true_anomaly:.1f}°, "
+              f"Orbital period = {sat.orbital_period_h:.2f} hours")tracking simulation and analysis.
 """
 
 from typing import List
@@ -53,7 +62,7 @@ def main():
         satellites,
         missile,
         time_array_s,
-        measurement_noise_std=0.005
+        measurement_noise_std=0.001  # Reduced from 0.005
     )
     
     print(f"  Generated {len(truth_df)} truth samples")
@@ -67,23 +76,33 @@ def main():
     # ========== Tracking ==========
     print("\n[3/5] Running tracker...")
     
-    # Initialize tracker
+    # Initialize tracker with initial state estimate close to truth
+    initial_state = np.zeros(9)
+    initial_state[:3] = initial_pos  # Start with missile initial position
+    initial_state[3:6] = initial_vel  # Start with missile initial velocity
+    initial_state[6:9] = np.array([0, 0, -missile.gravity])  # Initial acceleration
+    
+    # Optimized process noise (position/velocity/acceleration uncertainties)
     process_noise_std = np.array([
-        0.5,    # Position noise (km)
-        0.5,
-        0.5,
-        0.05,   # Velocity noise (km/s)
-        0.05,
-        0.05,
-        0.01,   # Acceleration noise (km/s^2)
-        0.01,
-        0.01
+        1.0,     # Position noise (km) - higher uncertainty
+        1.0,
+        1.0,
+        0.1,     # Velocity noise (km/s)
+        0.1,
+        0.1,
+        0.002,   # Acceleration noise (km/s^2) - very low, nearly constant
+        0.002,
+        0.002
     ])
+    
+    # Lower measurement noise (LOS measurements are relatively clean)
+    measurement_noise_std = 0.001  # Unit vector components
     
     tracker = MissileTracker(
         dt=dt,
         process_noise_std=process_noise_std,
-        measurement_noise_std=0.005
+        measurement_noise_std=measurement_noise_std,
+        initial_state=initial_state
     )
     
     # Process measurements
