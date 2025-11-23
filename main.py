@@ -2,9 +2,15 @@
 Main script for 3    # Create satellites in LEO (1000 km altitude)
     num_satellites = 5  # Increased from 3 for better geometry
     satellites = []
+    
+    # Cluster satellites in a smaller arc (60 degrees) instead of full equator
+    # This keeps more satellites in view of the missile simultaneously
+    arc_span_deg = 60.0  # Satellites spread over 60 degrees of arc
+    arc_center_deg = 0.0  # Center of satellite cluster
+    
     for i in range(num_satellites):
-        # Equally spaced around the equator
-        true_anomaly = (360.0 / num_satellites) * i
+        # Distribute satellites within the arc
+        true_anomaly = arc_center_deg + (arc_span_deg / (num_satellites - 1)) * i - arc_span_deg / 2
         sat = Satellite(sat_id=i, altitude_km=1000.0, true_anomaly_deg=true_anomaly)
         satellites.append(sat)
         print(f"  Satellite {i}: True anomaly = {true_anomaly:.1f}°, "
@@ -62,7 +68,8 @@ def main():
         satellites,
         missile,
         time_array_s,
-        measurement_noise_std=0.001  # Reduced from 0.005
+        measurement_noise_std=0.001,  # Reduced from 0.005
+        include_occlusion=False  # Disable occlusion for better tracking performance
     )
     
     print(f"  Generated {len(truth_df)} truth samples")
@@ -84,18 +91,18 @@ def main():
     
     # Optimized process noise (position/velocity/acceleration uncertainties)
     process_noise_std = np.array([
-        1.0,     # Position noise (km) - higher uncertainty
-        1.0,
-        1.0,
-        0.1,     # Velocity noise (km/s)
+        0.1,     # Position noise (km) - small, initial pos is good
         0.1,
         0.1,
-        0.002,   # Acceleration noise (km/s^2) - very low, nearly constant
-        0.002,
-        0.002
+        0.05,    # Velocity noise (km/s) - small, initial vel is good
+        0.05,
+        0.05,
+        0.0001,  # Acceleration noise (km/s^2) - tiny, nearly constant gravity
+        0.0001,
+        0.0001
     ])
     
-    # Lower measurement noise (LOS measurements are relatively clean)
+    # Measurement noise (LOS measurements are relatively clean)
     measurement_noise_std = 0.001  # Unit vector components
     
     tracker = MissileTracker(

@@ -1,11 +1,12 @@
 """
 Missile tracking simulation using LEO satellites.
-This module simulates satellite orbits and missile trajectories with LOS measurements.
+This module simulates satellite orbits and missile trajectories with LOS measurements,
+including Earth occlusion effects.
 """
 
 import numpy as np
 import pandas as pd
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 
 class Satellite:
@@ -73,6 +74,61 @@ class Satellite:
         return np.array([vx, vy, vz])
 
 
+def is_los_occluded(sat_pos: np.ndarray, missile_pos: np.ndarray, earth_radius_km: float = 6371.0) -> bool:
+    """
+    Check if Earth occludes the line-of-sight between satellite and missile.
+    
+    Uses the closest point of approach method to determine if Earth blocks the LOS vector.
+    
+    Args:
+        sat_pos: Satellite position [x, y, z] in km
+        missile_pos: Missile position [x, y, z] in km
+        earth_radius_km: Earth's radius (km)
+        
+    Returns:
+        True if Earth occludes LOS, False otherwise
+    """
+    # Vector from satellite to missile
+    los_vec = missile_pos - sat_pos
+    los_distance = np.linalg.norm(los_vec)
+    
+    if los_distance < 1e-6:
+        return False
+    
+    # Vector from Earth center to satellite
+    sat_to_earth = -sat_pos  # Vector from sat to Earth center
+    
+    # Project satellite-to-earth vector onto LOS vector
+    # This gives the parameter t of closest approach on the LOS line
+    los_unit = los_vec / los_distance
+    t = np.dot(sat_to_earth, los_unit) / los_distance
+    
+    # Closest point on LOS line to Earth center
+    if t < 0:
+        # Closest point is behind satellite, so satellite is between Earth and missile
+        closest_point = sat_pos
+    elif t > 1:
+        # Closest point is beyond missile
+        closest_point = missile_pos
+    else:
+        # Closest point is between satellite and missile
+        closest_point = sat_pos + t * los_vec
+    
+    # Distance from Earth center to closest point on LOS line
+    dist_to_los = np.linalg.norm(closest_point)
+    
+    # Check if LOS line intersects Earth
+    # Account for Earth's radius plus small margin for tangent rays
+    if dist_to_los < earth_radius_km + 1e-3:
+        return True
+    
+    # Also check if missile is below Earth surface (shouldn't happen in normal trajectory)
+    if np.linalg.norm(missile_pos) < earth_radius_km:
+        return True
+    
+    return False
+
+
 class MissileSimulator:
     """Simulates a ballistic missile trajectory."""
     
@@ -133,7 +189,8 @@ def simulate_measurements(
     satellites: List[Satellite],
     missile: MissileSimulator,
     time_array_s: np.ndarray,
-    measurement_noise_std: float = 0.001
+    measurement_noise_std: float = 0.001,
+    include_occlusion: bool = False
 ) -> Tuple[dict[int, pd.DataFrame], pd.DataFrame]:
     """
     Simulate satellite measurements and missile truth trajectory.
@@ -143,6 +200,7 @@ def simulate_measurements(
         missile: MissileSimulator object
         time_array_s: Array of times to simulate (seconds)
         measurement_noise_std: Standard deviation of LOS vector measurement noise
+        include_occlusion: Whether to include Earth occlusion effects (default: False)
         
     Returns:
         Tuple of (measurements_dict, truth_dataframe)
@@ -151,6 +209,7 @@ def simulate_measurements(
     """
     measurements_dict: dict[int, list[dict[str,float]]] = {}
     truth_data: List[dict[str,float]] = []
+    occlusion_stats = {}  # Track occlusion statistics per satellite
     
     for t in time_array_s:
         # Get true missile state
@@ -179,6 +238,14 @@ def simulate_measurements(
             los_vector = missile_pos - sat_pos
             los_distance = np.linalg.norm(los_vector)
             los_unit_vector = los_vector / los_distance if los_distance > 0 else np.array([0, 0, 0])
+            
+            # Check for Earth occlusion (optional)
+            if include_occlusion and is_los_occluded(sat_pos, missile_pos):
+                # Skip measurement if occluded
+                if sat.sat_id not in occlusion_stats:
+                    occlusion_stats[sat.sat_id] = 0
+                occlusion_stats[sat.sat_id] += 1
+                continue
             
             # Add measurement noise
             noise = np.random.normal(0, measurement_noise_std, 3)

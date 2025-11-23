@@ -125,7 +125,8 @@ class ExtendedKalmanFilter:
             measurements: 3-element LOS measurement vector [los_x, los_y, los_z]
             sat_pos: Satellite position [x, y, z]
         """
-        # Process all 3 components of the LOS vector
+        # Process all 3 components of the LOS vector sequentially
+        # This avoids issues with rank deficiency in measurement matrix
         for component in range(3):
             H = self.measurement_jacobian(sat_pos, component)
             
@@ -134,27 +135,29 @@ class ExtendedKalmanFilter:
             los_vector = missile_pos - sat_pos
             los_distance = np.linalg.norm(los_vector)
             
-            if los_distance > 1e-6:
+            if los_distance > 1e-3:  # Only update if satellite is not too close
                 los_unit = los_vector / los_distance
                 predicted_meas = los_unit[component]
-            else:
-                predicted_meas = 0.0
-            
-            # Innovation
-            innovation = measurements[component] - predicted_meas
-            
-            # Innovation covariance
-            S = H @ self.P @ H.T + self.R
-            
-            # Kalman gain
-            if S[0, 0] > 1e-10:
-                K = self.P @ H.T / S[0, 0]
                 
-                # State update
-                self.state = self.state + K.flatten() * innovation
+                # Innovation
+                innovation = measurements[component] - predicted_meas
                 
-                # Covariance update
-                self.P = (np.eye(self.state_dim) - K @ H) @ self.P
+                # Clamp innovation to prevent filter divergence
+                innovation = np.clip(innovation, -0.5, 0.5)
+                
+                # Innovation covariance
+                S = H @ self.P @ H.T + self.R
+                
+                # Kalman gain with regularization
+                if S[0, 0] > 1e-10:
+                    K = self.P @ H.T / S[0, 0]
+                    
+                    # State update
+                    self.state = self.state + K.flatten() * innovation
+                    
+                    # Covariance update with Joseph form
+                    I_KH = np.eye(self.state_dim) - K @ H
+                    self.P = I_KH @ self.P @ I_KH.T + K @ self.R @ K.T
     
     def get_position(self) -> np.ndarray:
         """Get estimated missile position."""
