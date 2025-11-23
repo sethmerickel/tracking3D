@@ -171,6 +171,7 @@ class TrackingAnalyzer:
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(111, projection='3d')
         
+        # Use merged_df to ensure we're comparing same times for both truth and estimate
         # Truth trajectory
         ax.plot(
             self.merged_df['pos_x_km'],
@@ -201,10 +202,24 @@ class TrackingAnalyzer:
             c='red', s=100, marker='s', label='Est Start'
         )
         
+        # End points
+        ax.scatter(
+            self.merged_df['pos_x_km'].iloc[-1],
+            self.merged_df['pos_y_km'].iloc[-1],
+            self.merged_df['pos_z_km'].iloc[-1],
+            c='blue', s=100, marker='^', label='Truth End'
+        )
+        ax.scatter(
+            self.merged_df['est_pos_x_km'].iloc[-1],
+            self.merged_df['est_pos_y_km'].iloc[-1],
+            self.merged_df['est_pos_z_km'].iloc[-1],
+            c='red', s=100, marker='*', label='Est End'
+        )
+        
         ax.set_xlabel('X (km)')
         ax.set_ylabel('Y (km)')
         ax.set_zlabel('Z (km)')
-        ax.set_title('Missile Trajectory: Truth vs Estimate')
+        ax.set_title('Missile Trajectory: Truth vs Estimate (3D View)')
         ax.legend()
         ax.grid(True, alpha=0.3)
         
@@ -253,8 +268,105 @@ RMS Error: {np.sqrt((errors_df['error_mag_km']**2).mean()):.6f} km
         plt.tight_layout()
         plt.savefig('/Users/sethmerickel/Projects/tracking3D/magnitude_errors.png', dpi=150)
         plt.show()
-
-
+    
+    def plot_error_components_vs_time(self, figsize: Tuple[int, int] = (14, 6)) -> None:
+        """
+        Plot individual error components over time to diagnose inconsistencies.
+        
+        Args:
+            figsize: Figure size
+        """
+        errors_df = self.compute_position_errors()
+        
+        fig, axes = plt.subplots(1, 3, figsize=figsize)
+        fig.suptitle('Position Error Components vs Time', fontsize=14)
+        
+        components = ['x', 'y', 'z']
+        
+        for idx, component in enumerate(components):
+            ax = axes[idx]
+            error_col = f'error_{component}_km'
+            std_col = f'std_{component}_km'
+            
+            ax.plot(errors_df['time_s'], errors_df[error_col], 'b-', linewidth=2, label='Error')
+            ax.fill_between(
+                errors_df['time_s'],
+                -errors_df[std_col],
+                errors_df[std_col],
+                alpha=0.3,
+                label='±1σ'
+            )
+            ax.axhline(y=0, color='k', linestyle='--', alpha=0.3)
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel(f'Error (km)')
+            ax.set_title(f'{component.upper()} Position Error')
+            ax.grid(True, alpha=0.3)
+            ax.legend()
+        
+        plt.tight_layout()
+        plt.savefig('/Users/sethmerickel/Projects/tracking3D/error_components_vs_time.png', dpi=150)
+        plt.show()
+    
+    def plot_trajectory_2d_projections(self, figsize: Tuple[int, int] = (15, 5)) -> None:
+        """
+        Plot 2D projections of trajectory to better see errors in each plane.
+        
+        Args:
+            figsize: Figure size
+        """
+        fig, axes = plt.subplots(1, 3, figsize=figsize)
+        fig.suptitle('2D Trajectory Projections: Truth (blue) vs Estimate (red dashed)', fontsize=14)
+        
+        # XY plane
+        axes[0].plot(self.merged_df['pos_x_km'], self.merged_df['pos_y_km'], 
+                     'b-', linewidth=2, label='Truth')
+        axes[0].plot(self.merged_df['est_pos_x_km'], self.merged_df['est_pos_y_km'], 
+                     'r--', linewidth=2, label='Estimate')
+        axes[0].scatter(self.merged_df['pos_x_km'].iloc[0], self.merged_df['pos_y_km'].iloc[0],
+                       c='blue', s=100, marker='o', zorder=5)
+        axes[0].scatter(self.merged_df['est_pos_x_km'].iloc[0], self.merged_df['est_pos_y_km'].iloc[0],
+                       c='red', s=100, marker='s', zorder=5)
+        axes[0].set_xlabel('X (km)')
+        axes[0].set_ylabel('Y (km)')
+        axes[0].set_title('XY Plane')
+        axes[0].grid(True, alpha=0.3)
+        axes[0].legend()
+        axes[0].axis('equal')
+        
+        # XZ plane
+        axes[1].plot(self.merged_df['pos_x_km'], self.merged_df['pos_z_km'], 
+                     'b-', linewidth=2, label='Truth')
+        axes[1].plot(self.merged_df['est_pos_x_km'], self.merged_df['est_pos_z_km'], 
+                     'r--', linewidth=2, label='Estimate')
+        axes[1].scatter(self.merged_df['pos_x_km'].iloc[0], self.merged_df['pos_z_km'].iloc[0],
+                       c='blue', s=100, marker='o', zorder=5)
+        axes[1].scatter(self.merged_df['est_pos_x_km'].iloc[0], self.merged_df['est_pos_z_km'].iloc[0],
+                       c='red', s=100, marker='s', zorder=5)
+        axes[1].set_xlabel('X (km)')
+        axes[1].set_ylabel('Z (km)')
+        axes[1].set_title('XZ Plane')
+        axes[1].grid(True, alpha=0.3)
+        axes[1].legend()
+        
+        # YZ plane
+        axes[2].plot(self.merged_df['pos_y_km'], self.merged_df['pos_z_km'], 
+                     'b-', linewidth=2, label='Truth')
+        axes[2].plot(self.merged_df['est_pos_y_km'], self.merged_df['est_pos_z_km'], 
+                     'r--', linewidth=2, label='Estimate')
+        axes[2].scatter(self.merged_df['pos_y_km'].iloc[0], self.merged_df['pos_z_km'].iloc[0],
+                       c='blue', s=100, marker='o', zorder=5)
+        axes[2].scatter(self.merged_df['est_pos_y_km'].iloc[0], self.merged_df['est_pos_z_km'].iloc[0],
+                       c='red', s=100, marker='s', zorder=5)
+        axes[2].set_xlabel('Y (km)')
+        axes[2].set_ylabel('Z (km)')
+        axes[2].set_title('YZ Plane')
+        axes[2].grid(True, alpha=0.3)
+        axes[2].legend()
+        
+        plt.tight_layout()
+        plt.savefig('/Users/sethmerickel/Projects/tracking3D/trajectory_2d_projections.png', dpi=150)
+        plt.show()
+    
 def run_full_analysis(truth_df: pd.DataFrame, estimates_df: pd.DataFrame) -> None:
     """
     Run complete analysis and generate all plots.
@@ -273,5 +385,11 @@ def run_full_analysis(truth_df: pd.DataFrame, estimates_df: pd.DataFrame) -> Non
     
     print("Generating magnitude error plot...")
     analyzer.plot_magnitude_errors()
+    
+    print("Generating error components vs time plot...")
+    analyzer.plot_error_components_vs_time()
+    
+    print("Generating 2D trajectory projections...")
+    analyzer.plot_trajectory_2d_projections()
     
     print("Analysis complete!")
