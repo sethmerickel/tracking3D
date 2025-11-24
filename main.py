@@ -3,9 +3,9 @@ Main script for 3    # Create satellites in LEO (1000 km altitude)
     num_satellites = 5  # Increased from 3 for better geometry
     satellites = []
     
-    # Cluster satellites in a smaller arc (60 degrees) instead of full equator
-    # This keeps more satellites in view of the missile simultaneously
-    arc_span_deg = 60.0  # Satellites spread over 60 degrees of arc
+    # Cluster satellites in a smaller arc (120 degrees) for better orbital visualization
+    # This spreads satellites more but keeps multiple in view for tracking
+    arc_span_deg = 120.0  # Satellites spread over 120 degrees of arc
     arc_center_deg = 0.0  # Center of satellite cluster
     
     for i in range(num_satellites):
@@ -61,7 +61,7 @@ def main():
     print(f"  Missile initial velocity: {initial_vel} km/s")
     
     # Simulation time
-    duration_s = 600.0  # 10 minutes
+    duration_s = 5400.0  # 90 minutes (1 full satellite orbit for better visualization)
     dt = 1.0  # 1 second
     time_array_s = np.arange(0, duration_s, dt)
     print(f"  Simulation duration: {duration_s:.0f} seconds, dt = {dt:.1f} s")
@@ -131,24 +131,24 @@ def main():
     run_full_analysis(truth_df, estimates_df)
     
     # ========== Interactive Visualization ==========
-    # print("\n[4b/5] Creating interactive 3D visualization...")
+    print("\n[4b/5] Creating interactive 3D visualization...")
     
-    # # Get satellite positions at t=0 for reference
-    # sat_positions = {}
-    # for sat in satellites:
-    #     pos = sat.get_position_eci(0.0)
-    #     sat_positions[sat.sat_id] = tuple(pos)
+    # Get satellite positions at t=0 for reference
+    sat_positions = {}
+    for sat in satellites:
+        pos = sat.get_position_eci(0.0)
+        sat_positions[sat.sat_id] = tuple(pos)
     
-    # visualizer = InteractiveTrajectoryVisualizer(
-    #     truth_df,
-    #     estimates_df,
-    #     measurements_dfs,
-    #     sat_positions
-    # )
+    visualizer = InteractiveTrajectoryVisualizer(
+        truth_df,
+        estimates_df,
+        measurements_dfs,
+        sat_positions
+    )
     
-    # viz_path = os.path.join(OUTPUT_DIR, 'interactive_tracking_visualization.html')
-    # visualizer.save_interactive_html(viz_path)
-    # print(f"  Interactive visualization saved to: {viz_path}")
+    viz_path = os.path.join(OUTPUT_DIR, 'interactive_tracking_visualization.html')
+    visualizer.save_interactive_html(viz_path)
+    print(f"  Interactive visualization saved to: {viz_path}")
     
     # ========== Save Results ==========
     print("\n[5/5] Saving results...")

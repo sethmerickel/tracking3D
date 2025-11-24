@@ -7,14 +7,16 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Tuple
 from PyQt5.QtWidgets import QMainWindow, QVBoxLayout, QWidget, QPushButton, QSlider, QLabel, QHBoxLayout
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, Qt as QtEnums
 from PyQt5.QtOpenGL import QGLWidget
-from OpenGL.GL import *
 from OpenGL.GL import (
     GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT, GL_DEPTH_TEST, GL_LIGHTING,
     GL_LIGHT0, GL_COLOR_MATERIAL, GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE,
     GL_POSITION, GL_AMBIENT, GL_DIFFUSE, GL_SPECULAR, GL_PROJECTION,
-    GL_MODELVIEW, GL_POINTS, GL_LINE_STRIP, GL_FILL
+    GL_MODELVIEW, GL_POINTS, GL_LINE_STRIP, GL_FILL, glClear, glEnable,
+    glColorMaterial, glLight, glMatrixMode, glLoadIdentity, glTranslatef,
+    glRotatef, glScalef, glColor3f, glPointSize, glBegin, glVertex3f, glEnd,
+    glLineWidth, glClearColor, glViewport, GL_FILL
 )
 from OpenGL.GLU import *
 import math
@@ -69,7 +71,7 @@ class Earth3DVisualizer(QGLWidget):
     
     def paintGL(self):
         """Render the 3D scene."""
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        glClear(int(GL_COLOR_BUFFER_BIT) | int(GL_DEPTH_BUFFER_BIT))
         glLoadIdentity()
         
         # Move camera back and apply rotations
@@ -80,6 +82,9 @@ class Earth3DVisualizer(QGLWidget):
         
         # Draw Earth
         self._draw_earth()
+        
+        # Draw satellite orbital trails (all history)
+        self._draw_satellite_trails()
         
         # Draw trajectories
         if self.truth_trajectory is not None:
@@ -125,20 +130,63 @@ class Earth3DVisualizer(QGLWidget):
             glVertex3f(point[0], point[1], point[2])
         glEnd()
     
+    def _draw_satellite_trails(self):
+        """Draw satellite position history trails."""
+        if self.satellite_positions is None or self.current_frame == 0:
+            return
+        
+        # Group satellite positions by ID across time (only up to current frame)
+        sat_trails: Dict[int, list] = {}
+        
+        for frame_idx in range(self.current_frame + 1):
+            if frame_idx >= len(self.satellite_positions):
+                break
+            
+            sats_at_frame = self.satellite_positions[frame_idx]
+            for sat_id, pos in sats_at_frame.items():
+                if sat_id not in sat_trails:
+                    sat_trails[sat_id] = []
+                sat_trails[sat_id].append((pos[0], pos[1], pos[2]))
+        
+        # Draw trails for each satellite with minimum 2 points
+        for sat_id, trail in sat_trails.items():
+            if len(trail) > 1:
+                glColor3f(0, 0.7, 0.7)  # Light cyan
+                glLineWidth(1)
+                glBegin(GL_LINE_STRIP)
+                for x, y, z in trail:
+                    glVertex3f(x, y, z)
+                glEnd()
+    
     def _draw_satellites_and_los(self, frame_idx):
         """Draw satellites and LOS vectors at current frame."""
-        if frame_idx >= len(self.satellite_positions):
+        if self.satellite_positions is None or (frame_idx >= len(self.satellite_positions)):
             return
         
         sats = self.satellite_positions[frame_idx]
-        los = self.los_vectors[frame_idx] if self.los_vectors else {}
         
-        # Draw satellites
+        # Skip if no satellites at this frame
+        if not sats:
+            return
+        
+        # Draw satellites with larger markers
         for sat_id, pos in sats.items():
             glColor3f(0, 1, 1)  # Cyan
-            glPointSize(8)
+            glPointSize(15)  # Larger size for visibility
             glBegin(GL_POINTS)
             glVertex3f(pos[0], pos[1], pos[2])
+            glEnd()
+            
+            # Draw satellite label/orbit trail (small circle)
+            glColor3f(0, 0.5, 1)  # Darker cyan
+            glLineWidth(1)
+            glBegin(GL_LINE_STRIP)
+            for angle in np.linspace(0, 2*np.pi, 16):
+                radius = np.sqrt(pos[0]**2 + pos[1]**2)
+                x = radius * np.cos(angle)
+                y = radius * np.sin(angle)
+                z = pos[2]
+                glVertex3f(x, y, z)
             glEnd()
         
         # Draw LOS vectors
@@ -146,7 +194,7 @@ class Earth3DVisualizer(QGLWidget):
             missile_pos = self.truth_trajectory[frame_idx]
             for sat_id, sat_pos in sats.items():
                 glColor3f(0, 1, 0)  # Lime green
-                glLineWidth(1)
+                glLineWidth(2)  # Thicker for visibility
                 glBegin(GL_LINE_STRIP)
                 glVertex3f(sat_pos[0], sat_pos[1], sat_pos[2])
                 glVertex3f(missile_pos[0], missile_pos[1], missile_pos[2])
@@ -225,8 +273,9 @@ class InteractiveTrajectoryWindow(QMainWindow):
         control_layout.addWidget(self.play_button)
         
         # Time slider
-        self.time_slider = QSlider(Qt.Horizontal)
+        self.time_slider = QSlider(Qt.Orientation.Horizontal)
         self.time_slider.sliderMoved.connect(self.on_slider_moved)
+        self.time_slider.valueChanged.connect(self.on_value_changed)
         control_layout.addWidget(self.time_slider)
         
         # Time label
@@ -303,7 +352,7 @@ class InteractiveTrajectoryWindow(QMainWindow):
             self.play_button.setText('▶ Play')
             self.is_playing = False
         else:
-            self.timer.start(100)  # Update every 100ms
+            self.timer.start(50)  # Update every 50ms (20 FPS) for faster animation
             self.play_button.setText('⏸ Pause')
             self.is_playing = True
     
@@ -317,6 +366,12 @@ class InteractiveTrajectoryWindow(QMainWindow):
     
     def on_slider_moved(self, value):
         """Handle slider movement."""
+        if value < len(self.times):
+            self.time_label.setText(f'Time: {self.times[value]:.1f} s')
+            self.visualizer.set_frame(value)
+    
+    def on_value_changed(self, value):
+        """Handle value changes (both user and programmatic)."""
         if value < len(self.times):
             self.time_label.setText(f'Time: {self.times[value]:.1f} s')
             self.visualizer.set_frame(value)

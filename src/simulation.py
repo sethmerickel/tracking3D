@@ -32,25 +32,22 @@ class Satellite:
         self.orbital_period_s = 2 * np.pi * np.sqrt((self.orbital_radius_km * 1000)**3 / mu_earth)
         self.orbital_period_h = self.orbital_period_s / 3600.0
         self.mean_motion_rad_s = 2 * np.pi / self.orbital_period_s
-    
-    def get_position_eci(self, time_s: float) -> np.ndarray:
-        """
-        Get satellite position in ECI coordinates at given time.
-        Assumes circular orbit in equatorial plane.
+
+    def get_position_eci_fixed(self, time_s):
+        """Get satellite ECI position, accounting for orbital motion."""
+        # Mean motion (rad/s) for circular orbit  
+        n = 2.0 * np.pi / self.orbital_period_s
         
-        Args:
-            time_s: Time in seconds
-            
-        Returns:
-            Position vector [x, y, z] in km
-        """
-        # True anomaly at time (radiians)
-        true_anomaly_rad = self.true_anomaly_deg * np.pi / 180.0 + self.mean_motion_rad_s * time_s
+        # Propagate true anomaly from initial position
+        # For circular orbit: true anomaly ≈ mean anomaly
+        initial_true_anomaly_rad = self.true_anomaly_deg * np.pi / 180.0
+        nu = initial_true_anomaly_rad + n * time_s
         
-        # Position in orbital plane
-        x = self.orbital_radius_km * np.cos(true_anomaly_rad)
-        y = self.orbital_radius_km * np.sin(true_anomaly_rad)
-        z = 0.0  # Equatorial plane
+        # Position in equatorial circular orbit
+        r = self.orbital_radius_km
+        x = r * np.cos(nu)
+        y = r * np.sin(nu)
+        z = 0.0
         
         return np.array([x, y, z])
     
