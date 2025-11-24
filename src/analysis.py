@@ -10,6 +10,10 @@ matplotlib.use("QtAgg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from typing import Tuple
+import os
+
+# Output directory
+OUTPUT_DIR = '/Users/sethmerickel/Projects/tracking3D/output'
 
 
 class TrackingAnalyzer:
@@ -158,7 +162,7 @@ class TrackingAnalyzer:
             ax.grid(True, alpha=0.3)
         
         plt.tight_layout()
-        plt.savefig('/Users/sethmerickel/Projects/tracking3D/position_errors.png', dpi=150)
+        plt.savefig(os.path.join(OUTPUT_DIR, 'position_errors.png'), dpi=150)
         plt.show()
     
     def plot_trajectory_3d(self, figsize: Tuple[int, int] = (12, 10)) -> None:
@@ -224,7 +228,7 @@ class TrackingAnalyzer:
         ax.grid(True, alpha=0.3)
         
         plt.tight_layout()
-        plt.savefig('/Users/sethmerickel/Projects/tracking3D/trajectory_3d.png', dpi=150)
+        plt.savefig(os.path.join(OUTPUT_DIR, 'trajectory_3d.png'), dpi=150)
         plt.show()
     
     def plot_magnitude_errors(self, figsize: Tuple[int, int] = (12, 5)) -> None:
@@ -266,7 +270,7 @@ RMS Error: {np.sqrt((errors_df['error_mag_km']**2).mean()):.6f} km
                 verticalalignment='center', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
         
         plt.tight_layout()
-        plt.savefig('/Users/sethmerickel/Projects/tracking3D/magnitude_errors.png', dpi=150)
+        plt.savefig(os.path.join(OUTPUT_DIR, 'magnitude_errors.png'), dpi=150)
         plt.show()
     
     def plot_error_components_vs_time(self, figsize: Tuple[int, int] = (14, 6)) -> None:
@@ -304,7 +308,7 @@ RMS Error: {np.sqrt((errors_df['error_mag_km']**2).mean()):.6f} km
             ax.legend()
         
         plt.tight_layout()
-        plt.savefig('/Users/sethmerickel/Projects/tracking3D/error_components_vs_time.png', dpi=150)
+        plt.savefig(os.path.join(OUTPUT_DIR, 'error_components_vs_time.png'), dpi=150)
         plt.show()
     
     def plot_trajectory_2d_projections(self, figsize: Tuple[int, int] = (15, 5)) -> None:
@@ -364,7 +368,7 @@ RMS Error: {np.sqrt((errors_df['error_mag_km']**2).mean()):.6f} km
         axes[2].legend()
         
         plt.tight_layout()
-        plt.savefig('/Users/sethmerickel/Projects/tracking3D/trajectory_2d_projections.png', dpi=150)
+        plt.savefig(os.path.join(OUTPUT_DIR, 'trajectory_2d_projections.png'), dpi=150)
         plt.show()
     
 def run_full_analysis(truth_df: pd.DataFrame, estimates_df: pd.DataFrame) -> None:

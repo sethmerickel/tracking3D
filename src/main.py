@@ -22,7 +22,13 @@ import numpy as np
 from simulation import Satellite, MissileSimulator, simulate_measurements
 from tracker import MissileTracker
 from analysis import run_full_analysis
+from interactive_viz import InteractiveTrajectoryVisualizer
 
+
+# Create output directory if it doesn't exist
+import os
+OUTPUT_DIR = '/Users/sethmerickel/Projects/tracking3D/output'
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def main():
     """Run complete missile tracking simulation and analysis."""
@@ -124,16 +130,36 @@ def main():
     
     run_full_analysis(truth_df, estimates_df)
     
+    # ========== Interactive Visualization ==========
+    print("\n[4b/5] Creating interactive 3D visualization...")
+    
+    # Get satellite positions at t=0 for reference
+    sat_positions = {}
+    for sat in satellites:
+        pos = sat.get_position_eci(0.0)
+        sat_positions[sat.sat_id] = tuple(pos)
+    
+    visualizer = InteractiveTrajectoryVisualizer(
+        truth_df,
+        estimates_df,
+        measurements_dfs,
+        sat_positions
+    )
+    
+    viz_path = os.path.join(OUTPUT_DIR, 'interactive_tracking_visualization.html')
+    visualizer.save_interactive_html(viz_path)
+    print(f"  Interactive visualization saved to: {viz_path}")
+    
     # ========== Save Results ==========
     print("\n[5/5] Saving results...")
     
-    truth_df.to_csv('/Users/sethmerickel/Projects/tracking3D/truth_trajectory.csv', index=False)
-    estimates_df.to_csv('/Users/sethmerickel/Projects/tracking3D/estimates_trajectory.csv', index=False)
+    truth_df.to_csv(os.path.join(OUTPUT_DIR, 'truth_trajectory.csv'), index=False)
+    estimates_df.to_csv(os.path.join(OUTPUT_DIR, 'estimates_trajectory.csv'), index=False)
     
     for sat_id, meas_df in measurements_dfs.items():
-        meas_df.to_csv(f'/Users/sethmerickel/Projects/tracking3D/measurements_sat{sat_id}.csv', index=False)
+        meas_df.to_csv(os.path.join(OUTPUT_DIR, f'measurements_sat{sat_id}.csv'), index=False)
     
-    print("  Saved CSV files to /Users/sethmerickel/Projects/tracking3D/")
+    print(f"  Saved CSV files to {OUTPUT_DIR}")
     
     print("\n" + "=" * 60)
     print("SIMULATION COMPLETE")

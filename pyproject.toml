@@ -1,12 +1,24 @@
 [project]
 name = "tracking3d"
 version = "0.1.0"
-description = "Add your description here"
+description = "3D Missile Tracking Simulation with LEO Satellites"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.8"
 dependencies = [
-    "matplotlib>=3.10.7",
-    "numpy>=2.3.5",
-    "pandas>=2.3.3",
+    "numpy>=1.21.0",
+    "pandas>=1.3.0",
+    "matplotlib>=3.4.0",
+    "plotly>=5.0.0",
     "pyqt5>=5.15.11",
+    "pyopengl>=3.1.10",
+]
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "black>=21.0",
 ]
