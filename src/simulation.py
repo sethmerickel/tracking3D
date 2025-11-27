@@ -10,65 +10,74 @@ from typing import List, Tuple, Dict
 
 
 class Satellite:
-    """Represents a LEO satellite in a circular orbit."""
+    """Models a satellite in circular LEO orbit."""
     
-    def __init__(self, sat_id: int, altitude_km: float = 1000.0, true_anomaly_deg: float = 0.0):
+    def __init__(self, sat_id: int, altitude_km: float, longitude_deg: float, inclination_deg: float = 90.0):
         """
-        Initialize a satellite in a circular orbit.
+        Initialize satellite in circular orbit.
         
         Args:
             sat_id: Satellite identifier
             altitude_km: Altitude above Earth surface (km)
-            true_anomaly_deg: Initial true anomaly (degrees)
+            longitude_deg: Initial longitude (degrees)
+            inclination_deg: Orbit inclination (degrees), default 90° for polar orbit
         """
         self.sat_id = sat_id
+        self.altitude_km = altitude_km
+        self.inclination_deg = inclination_deg
+        self.longitude_deg = longitude_deg
+        
+        # Orbital parameters
         self.earth_radius_km = 6371.0
         self.orbital_radius_km = self.earth_radius_km + altitude_km
-        self.altitude_km = altitude_km
-        self.true_anomaly_deg = true_anomaly_deg
         
-        # Orbital period (hours) using Kepler's third law
-        mu_earth = 398600.4418  # km^3/s^2
-        self.orbital_period_s = 2 * np.pi * np.sqrt((self.orbital_radius_km * 1000)**3 / mu_earth)
-        self.orbital_period_h = self.orbital_period_s / 3600.0
-        self.mean_motion_rad_s = 2 * np.pi / self.orbital_period_s
-
-    def get_position_eci_fixed(self, time_s):
-        """Get satellite ECI position, accounting for orbital motion."""
-        # Mean motion (rad/s) for circular orbit  
-        n = 2.0 * np.pi / self.orbital_period_s
+        # Mean motion (radians per second)
+        # n = sqrt(mu / a^3), where mu = 398600.4418 km^3/s^2
+        self.mu = 398600.4418  # Earth's gravitational parameter
+        self.mean_motion = np.sqrt(self.mu / self.orbital_radius_km**3)
         
-        # Propagate true anomaly from initial position
-        # For circular orbit: true anomaly ≈ mean anomaly
-        initial_true_anomaly_rad = self.true_anomaly_deg * np.pi / 180.0
-        nu = initial_true_anomaly_rad + n * time_s
-        
-        # Position in equatorial circular orbit
-        r = self.orbital_radius_km
-        x = r * np.cos(nu)
-        y = r * np.sin(nu)
-        z = 0.0
-        
-        return np.array([x, y, z])
+        # Orbital period in seconds
+        self.period_s = 2 * np.pi / self.mean_motion
     
-    def get_velocity_eci(self, time_s: float) -> np.ndarray:
+    def get_position_eci(self, time_s: float) -> np.ndarray:
         """
-        Get satellite velocity in ECI coordinates at given time.
+        Get satellite position in ECI coordinates at given time.
         
         Args:
             time_s: Time in seconds
             
         Returns:
-            Velocity vector [vx, vy, vz] in km/s
+            Position vector [x, y, z] in km (ECI frame)
         """
-        true_anomaly_rad = self.true_anomaly_deg * np.pi / 180.0 + self.mean_motion_rad_s * time_s
+        # Mean anomaly at this time (radians)
+        mean_anomaly = self.mean_motion * time_s
         
-        orbital_speed = self.orbital_radius_km * self.mean_motion_rad_s
-        vx = -orbital_speed * np.sin(true_anomaly_rad)
-        vy = orbital_speed * np.cos(true_anomaly_rad)
-        vz = 0.0
+        # For circular orbits, true anomaly = mean anomaly
+        true_anomaly = mean_anomaly
         
-        return np.array([vx, vy, vz])
+        # Position in orbital plane
+        x_orb = self.orbital_radius_km * np.cos(true_anomaly)
+        y_orb = self.orbital_radius_km * np.sin(true_anomaly)
+        z_orb = 0.0
+        
+        # Convert inclination to radians
+        inc_rad = np.radians(self.inclination_deg)
+        
+        # Convert initial longitude to radians
+        lon_rad = np.radians(self.longitude_deg)
+        
+        # Rotation matrices
+        # First rotate by inclination (around x-axis in orbital plane)
+        x1 = x_orb
+        y1 = y_orb * np.cos(inc_rad)
+        z1 = y_orb * np.sin(inc_rad)
+        
+        # Then rotate by longitude (around z-axis in ECI frame)
+        x_eci = x1 * np.cos(lon_rad) - y1 * np.sin(lon_rad)
+        y_eci = x1 * np.sin(lon_rad) + y1 * np.cos(lon_rad)
+        z_eci = z1
+        
+        return np.array([x_eci, y_eci, z_eci])
 
 
 def is_los_occluded(sat_pos: np.ndarray, missile_pos: np.ndarray, earth_radius_km: float = 6371.0) -> bool:
@@ -180,91 +189,126 @@ class MissileSimulator:
             Acceleration vector [ax, ay, az] in km/s^2
         """
         return np.array([0.0, 0.0, -self.gravity])
+    
+    def simulate_trajectory(self, times: np.ndarray) -> np.ndarray:
+        """
+        Simulate missile trajectory over time steps.
+        
+        Args:
+            times: Array of time values in seconds
+            
+        Returns:
+            Array of shape (len(times), 6) with [x, y, z, vx, vy, vz] at each time
+        """
+        trajectory = np.zeros((len(times), 6))
+        for i, t in enumerate(times):
+            trajectory[i, :3] = self.get_position(t)
+            trajectory[i, 3:] = self.get_velocity(t)
+        return trajectory
 
 
 def simulate_measurements(
-    satellites: List[Satellite],
-    missile: MissileSimulator,
-    time_array_s: np.ndarray,
-    measurement_noise_std: float = 0.001,
+    num_satellites: int = 5,
+    duration_s: float = 5400.0,
+    dt_s: float = 1.0,
+    measurement_noise_los: float = 0.001,
     include_occlusion: bool = False
-) -> Tuple[dict[int, pd.DataFrame], pd.DataFrame]:
+) -> Tuple[Dict[int, pd.DataFrame], pd.DataFrame]:
     """
     Simulate satellite measurements and missile truth trajectory.
     
     Args:
-        satellites: List of Satellite objects
-        missile: MissileSimulator object
-        time_array_s: Array of times to simulate (seconds)
-        measurement_noise_std: Standard deviation of LOS vector measurement noise
-        include_occlusion: Whether to include Earth occlusion effects (default: False)
+        num_satellites: Number of satellites
+        duration_s: Simulation duration in seconds
+        dt_s: Time step in seconds
+        measurement_noise_los: Measurement noise on LOS components
+        include_occlusion: Whether to include Earth occlusion
         
     Returns:
-        Tuple of (measurements_dict, truth_dataframe)
-        measurements_dict: Dictionary with DataFrames for each satellite
-        truth_dataframe: DataFrame with true missile state
+        Tuple of (measurements_dict, truth_df)
     """
-    measurements_dict: dict[int, list[dict[str,float]]] = {}
-    truth_data: List[dict[str,float]] = []
-    occlusion_stats = {}  # Track occlusion statistics per satellite
+    # Initialize satellites in cluster around 0° longitude
+    satellites = []
+    arc_span_deg = 120.0  # Spread satellites over 120° arc
+    for i in range(num_satellites):
+        longitude = -arc_span_deg/2 + (i / (num_satellites - 1)) * arc_span_deg
+        sat = Satellite(
+            sat_id=i,
+            altitude_km=1000.0,
+            longitude_deg=longitude,
+            inclination_deg=90.0
+        )
+        satellites.append(sat)
     
-    for t in time_array_s:
-        # Get true missile state
-        missile_pos = missile.get_position(t)
-        missile_vel = missile.get_velocity(t)
-        missile_acc = missile.get_acceleration(t)
-        
-        truth_data.append({
-            'time_s': t,
-            'pos_x_km': missile_pos[0],
-            'pos_y_km': missile_pos[1],
-            'pos_z_km': missile_pos[2],
-            'vel_x_km_s': missile_vel[0],
-            'vel_y_km_s': missile_vel[1],
-            'vel_z_km_s': missile_vel[2],
-            'acc_x_km_s2': missile_acc[0],
-            'acc_y_km_s2': missile_acc[1],
-            'acc_z_km_s2': missile_acc[2],
-        })
+    # Time vector
+    times = np.arange(0, duration_s + dt_s, dt_s)
+    
+    # Missile trajectory (ballistic)
+    # Initialize missile with launch position and velocity
+    initial_pos = np.array([0.0, 0.0, 100.0])  # Launch from 100 km altitude
+    initial_vel = np.array([7.0, 0.0, 2.0])    # Initial velocity in km/s
+    missile_sim = MissileSimulator(initial_pos, initial_vel)
+    truth_trajectory = missile_sim.simulate_trajectory(times)
+    
+    # Satellite measurements
+    measurements = {}
+    for sat in satellites:
+        measurements[sat.sat_id] = []
+    
+    # Generate measurements at each time step
+    for t in times:
+        # Get missile position at this time
+        missile_idx = int(np.round(t / dt_s))
+        if missile_idx >= len(truth_trajectory):
+            break
+            
+        missile_pos = truth_trajectory[missile_idx]
         
         # Get measurements from each satellite
         for sat in satellites:
+            # Get satellite position at this time (KEY FIX: pass time to get updated position)
             sat_pos = sat.get_position_eci(t)
             
-            # Line-of-sight vector from satellite to missile
-            los_vector = missile_pos - sat_pos
-            los_distance = np.linalg.norm(los_vector)
-            los_unit_vector = los_vector / los_distance if los_distance > 0 else np.array([0, 0, 0])
+            # Line of sight vector
+            los_vec = missile_pos[0:3] - sat_pos
+            range_km = np.linalg.norm(los_vec)
             
-            # Check for Earth occlusion (optional)
+            # Unit LOS vector
+            if range_km > 0.1:
+                los_unit = los_vec / range_km
+            else:
+                los_unit = np.array([0, 0, 0])
+            
+            # Check Earth occlusion
             if include_occlusion and is_los_occluded(sat_pos, missile_pos):
-                # Skip measurement if occluded
-                if sat.sat_id not in occlusion_stats:
-                    occlusion_stats[sat.sat_id] = 0
-                occlusion_stats[sat.sat_id] += 1
                 continue
             
             # Add measurement noise
-            noise = np.random.normal(0, measurement_noise_std, 3)
-            los_measured = los_unit_vector + noise
-            los_measured /= np.linalg.norm(los_measured)  # Normalize back to unit vector
+            los_noisy = los_unit + np.random.normal(0, measurement_noise_los, 3)
             
-            # Store measurement
-            if sat.sat_id not in measurements_dict:
-                measurements_dict[sat.sat_id] = []
-            
-            measurements_dict[sat.sat_id].append({
+            measurements[sat.sat_id].append({
                 'time_s': t,
                 'sat_pos_x_km': sat_pos[0],
                 'sat_pos_y_km': sat_pos[1],
                 'sat_pos_z_km': sat_pos[2],
-                'los_x': los_measured[0],
-                'los_y': los_measured[1],
-                'los_z': los_measured[2],
+                'los_x': los_noisy[0],
+                'los_y': los_noisy[1],
+                'los_z': los_noisy[2],
             })
     
     # Convert to DataFrames
-    truth_df = pd.DataFrame(truth_data)
-    measurements_dfs = {sat_id: pd.DataFrame(meas) for sat_id, meas in measurements_dict.items()}
+    for sat_id in measurements:
+        measurements[sat_id] = pd.DataFrame(measurements[sat_id])
     
-    return measurements_dfs, truth_df
+    # Truth trajectory DataFrame
+    truth_df = pd.DataFrame({
+        'time_s': times[:len(truth_trajectory)],
+        'pos_x_km': truth_trajectory[:, 0],
+        'pos_y_km': truth_trajectory[:, 1],
+        'pos_z_km': truth_trajectory[:, 2],
+        'vel_x_km_s': truth_trajectory[:, 3],
+        'vel_y_km_s': truth_trajectory[:, 4],
+        'vel_z_km_s': truth_trajectory[:, 5],
+    })
+    
+    return measurements, truth_df

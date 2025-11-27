@@ -3,9 +3,9 @@ Main script for 3    # Create satellites in LEO (1000 km altitude)
     num_satellites = 5  # Increased from 3 for better geometry
     satellites = []
     
-    # Cluster satellites in a smaller arc (60 degrees) instead of full equator
-    # This keeps more satellites in view of the missile simultaneously
-    arc_span_deg = 60.0  # Satellites spread over 60 degrees of arc
+    # Cluster satellites in a smaller arc (120 degrees) for better orbital visualization
+    # This spreads satellites more but keeps multiple in view for tracking
+    arc_span_deg = 120.0  # Satellites spread over 120 degrees of arc
     arc_center_deg = 0.0  # Center of satellite cluster
     
     for i in range(num_satellites):
@@ -42,28 +42,28 @@ def main():
     
     # Create satellites in LEO (1000 km altitude)
     num_satellites = 3
-    satellites: List[Satellite] = []
-    for i in range(num_satellites):
-        # Equally spaced around the equator
-        true_anomaly = (360.0 / num_satellites) * i
-        sat = Satellite(sat_id=i, altitude_km=1000.0, true_anomaly_deg=true_anomaly)
-        satellites.append(sat)
-        print(f"  Satellite {i}: True anomaly = {true_anomaly:.1f}°, "
-              f"Orbital period = {sat.orbital_period_h:.2f} hours")
+    # satellites: List[Satellite] = []
+    # for i in range(num_satellites):
+    #     # Equally spaced around the equator
+    #     true_anomaly = (360.0 / num_satellites) * i
+    #     sat = Satellite(sat_id=i, altitude_km=1000.0, true_anomaly_deg=true_anomaly)
+    #     satellites.append(sat)
+    #     print(f"  Satellite {i}: True anomaly = {true_anomaly:.1f}°, "
+    #           f"Orbital period = {sat.orbital_period_h:.2f} hours")
     
     # Create missile trajectory
     # Initial position: 200 km altitude, flying north
-    initial_pos = np.array([6500.0, 0.0, 200.0])  # km
-    initial_vel = np.array([0.0, 8.0, 3.0])  # km/s (northbound with vertical component)
+    # initial_pos = np.array([6500.0, 0.0, 200.0])  # km
+    # initial_vel = np.array([0.0, 8.0, 3.0])  # km/s (northbound with vertical component)
     
-    missile = MissileSimulator(initial_pos, initial_vel)
-    print(f"  Missile initial position: {initial_pos} km")
-    print(f"  Missile initial velocity: {initial_vel} km/s")
+    # missile = MissileSimulator(initial_pos, initial_vel)
+    # print(f"  Missile initial position: {initial_pos} km")
+    # print(f"  Missile initial velocity: {initial_vel} km/s")
     
     # Simulation time
-    duration_s = 600.0  # 10 minutes
+    duration_s = 5400.0  # 90 minutes (1 full satellite orbit for better visualization)
     dt = 1.0  # 1 second
-    time_array_s = np.arange(0, duration_s, dt)
+    # time_array_s = np.arange(0, duration_s, dt)
     print(f"  Simulation duration: {duration_s:.0f} seconds, dt = {dt:.1f} s")
     
     # ========== Simulation ==========
@@ -71,10 +71,10 @@ def main():
     
     np.random.seed(42)  # For reproducibility
     measurements_dfs, truth_df = simulate_measurements(
-        satellites,
-        missile,
-        time_array_s,
-        measurement_noise_std=0.001,  # Reduced from 0.005
+        num_satellites,
+        duration_s,
+        dt,
+        measurement_noise_los=0.001,  # Reduced from 0.005
         include_occlusion=False  # Disable occlusion for better tracking performance
     )
     
@@ -91,9 +91,9 @@ def main():
     
     # Initialize tracker with initial state estimate close to truth
     initial_state = np.zeros(9)
-    initial_state[:3] = initial_pos  # Start with missile initial position
-    initial_state[3:6] = initial_vel  # Start with missile initial velocity
-    initial_state[6:9] = np.array([0, 0, -missile.gravity])  # Initial acceleration
+    initial_state[:3] = truth_df.iloc[0, 1:4].to_numpy()  # Start with missile initial position
+    initial_state[3:6] = truth_df.iloc[0, 4:7].to_numpy()  # Start with missile initial velocity
+    initial_state[6:9] = 0.0 # Initial acceleration
     
     # Optimized process noise (position/velocity/acceleration uncertainties)
     process_noise_std = np.array([

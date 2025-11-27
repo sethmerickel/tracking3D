@@ -11,6 +11,7 @@ dependencies = [
     "plotly>=5.0.0",
     "pyqt5>=5.15.11",
     "pyopengl>=3.1.10",
+    "poliastro>=0.17.0",
 ]
 
 [build-system]
