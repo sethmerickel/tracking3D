@@ -18,7 +18,7 @@ from OpenGL.GL import (
     glRotatef, glScalef, glColor3f, glPointSize, glBegin, glVertex3f, glEnd,
     glLineWidth, glClearColor, glViewport, GL_FILL
 )
-from OpenGL.GLU import *
+from OpenGL.GLU import gluPerspective, gluNewQuadric, gluQuadricDrawStyle, gluSphere
 import math
 
 
